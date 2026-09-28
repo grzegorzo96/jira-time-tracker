@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jira Time Tracker — Worklogi z Jiry</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>Jira Time Tracker</h1>
+        <p class="subtitle">Worklogi z Jiry</p>
+      </div>
+      <div class="header-actions">
+        <label class="month-picker">
+          <span>Miesiąc</span>
+          <input type="month" id="monthInput" />
+        </label>
+        <span class="jira-chip" id="jiraChip" title="Status połączenia z Jirą">Jira: …</span>
+        <button type="button" class="btn btn-ghost" id="btnJiraSettings" title="Ustawienia Jira">Połącz z Jirą</button>
+        <button type="button" class="btn btn-ghost" id="btnExport" title="Eksport CSV wybranego miesiąca">Eksport CSV</button>
+      </div>
+    </header>
+
+    <section class="stats" id="stats">
+      <div class="stat-card">
+        <div class="stat-label">Suma godzin w miesiącu</div>
+        <div class="stat-value" id="statTotal">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Liczba wpisów w miesiącu</div>
+        <div class="stat-value" id="statCount">—</div>
+      </div>
+      <div class="stat-card wide">
+        <div class="stat-label">Godziny wg projektu</div>
+        <div class="stat-list" id="statProjects">—</div>
+      </div>
+    </section>
+
+    <section class="panel toolbar">
+      <div>
+        <h2>Siatka miesięczna</h2>
+        <p class="section-hint">Wiersze = zadania · kolumny = dni · kliknij komórkę · auto-sync z Jirą</p>
+      </div>
+      <div class="toolbar-actions">
+        <button type="button" class="btn btn-primary" id="btnAdd">+ Nowy wpis</button>
+      </div>
+    </section>
+
+    <section class="panel grid-panel">
+      <div class="table-wrap grid-wrap">
+        <table class="day-grid" id="dayGridTable">
+          <thead id="dayGridHead"></thead>
+          <tbody id="dayGridBody">
+            <tr><td class="empty">Brak danych — połącz z Jirą lub dodaj wpis.</td></tr>
+          </tbody>
+          <tfoot id="dayGridFoot"></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <details class="panel entries-section" id="entriesSection">
+      <summary class="entries-summary">
+        <span class="entries-summary-main">
+          <span class="entries-title">Lista wpisów</span>
+          <span class="section-hint muted-inline">Szczegóły i edycja pojedynczych worklogów</span>
+        </span>
+        <span class="entries-summary-hint">Rozwiń, aby zobaczyć wpisy</span>
+      </summary>
+      <div class="entries-content">
+        <div class="table-wrap">
+          <table class="entries-table">
+            <thead>
+              <tr>
+                <th>Start</th>
+                <th>Projekt</th>
+                <th>Zgłoszenie</th>
+                <th>Czas</th>
+                <th>Komentarz</th>
+                <th aria-label="Akcje"></th>
+              </tr>
+            </thead>
+            <tbody id="entriesBody">
+              <tr><td colspan="6" class="empty">Brak wpisów — połącz z Jirą lub dodaj ręcznie.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <dialog id="entryDialog">
+    <form method="dialog" id="entryForm">
+      <h3 id="dialogTitle">Nowy wpis</h3>
+      <input type="hidden" id="entryId" />
+      <div class="form-grid">
+        <label>Projekt
+          <div class="select-with-filter">
+            <input type="search" id="fProjectFilter" class="select-filter" placeholder="Szukaj…" autocomplete="off" aria-label="Szukaj projektu" />
+            <select id="fProject" required>
+              <option value="">— wybierz projekt —</option>
+            </select>
+          </div>
+          <input type="text" id="fProjectText" class="project-fallback" placeholder="Projekt (np. ETP)" hidden />
+        </label>
+        <label class="full">Zgłoszenie
+          <div class="select-with-filter">
+            <input type="search" id="fIssueFilter" class="select-filter" placeholder="Szukaj…" autocomplete="off" aria-label="Szukaj zgłoszenia" />
+            <select id="fIssue">
+              <option value="">— wybierz projekt, by załadować zadania —</option>
+            </select>
+          </div>
+          <input type="text" id="fIssueCustom" class="issue-custom" placeholder="Własny klucz (np. ETP-123)" hidden />
+        </label>
+        <label class="full">Podsumowanie
+          <input type="text" id="fSummary" placeholder="Opis zadania" />
+        </label>
+        <label>Start
+          <input type="datetime-local" id="fStarted" required />
+        </label>
+        <label>Czas (godziny lub hh:mm)
+          <input type="text" id="fDuration" required placeholder="1.5 lub 1:30" />
+        </label>
+        <label class="full">Komentarz
+          <input type="text" id="fComment" />
+        </label>
+        <label class="full">Autor
+          <select id="fAuthor">
+            <option value="">— konto z tokena API —</option>
+          </select>
+          <span class="field-hint" id="authorNote" hidden>
+            Worklog w Jirze zapisze się na Twoim koncie API
+          </span>
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="btnCancel">Anuluj</button>
+        <button type="submit" class="btn btn-primary">Zapisz</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="jiraDialog">
+    <form method="dialog" id="jiraForm">
+      <h3>Ustawienia Jira</h3>
+      <p class="dialog-hint">
+        Token API:
+        <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener">
+          id.atlassian.com/manage-profile/security/api-tokens
+        </a>
+      </p>
+      <div class="form-grid">
+        <label class="full">Base URL
+          <input type="url" id="jiraBaseUrl" placeholder="https://niteam.atlassian.net" />
+        </label>
+        <label class="full">Email
+          <input type="email" id="jiraEmail" placeholder="grzegorz.osowski@netinteractive.pl" />
+        </label>
+        <label class="full">API token
+          <input type="password" id="jiraToken" placeholder="Pozostaw puste, by nie zmieniać" autocomplete="off" />
+        </label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="btnJiraCancel">Anuluj</button>
+        <button type="submit" class="btn btn-primary">Zapisz</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

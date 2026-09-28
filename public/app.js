@@ -1,0 +1,1161 @@
+'use strict';
+
+const $ = (sel) => document.querySelector(sel);
+
+const monthInput = $('#monthInput');
+const entriesBody = $('#entriesBody');
+const entriesSection = $('#entriesSection');
+const toastEl = $('#toast');
+const dialog = $('#entryDialog');
+const entryForm = $('#entryForm');
+
+let toastTimer = null;
+
+/** @type {string|null} project key filter for day grid / entries; null = all */
+let projectFilter = null;
+/** @type {object|null} last dashboard payload for re-render without refetch */
+let lastDashboard = null;
+function toast(msg, type = 'ok') {
+  toastEl.hidden = false;
+  toastEl.textContent = msg;
+  toastEl.className = `toast ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.hidden = true;
+  }, 3500);
+}
+
+let jiraConfigured = false;
+/** @type {{ displayName: string, accountId: string, email: string } | null} */
+let jiraMyself = null;
+const DEFAULT_AUTHOR = ''; // filled from Jira /myself (token account)
+const CUSTOM_ISSUE_VALUE = '__custom__';
+
+/** Filter <select> options by query (key + label). Returns first matching option with a value. */
+function filterSelectOptions(sel, query) {
+  if (!sel) return null;
+  const q = (query || '').trim().toLowerCase();
+  let firstMatch = null;
+  for (const opt of sel.options) {
+    if (!q) {
+      opt.hidden = false;
+      continue;
+    }
+    const hay = `${opt.value} ${opt.textContent || ''}`.toLowerCase();
+    const match = hay.includes(q);
+    opt.hidden = !match;
+    if (match && opt.value && !firstMatch) firstMatch = opt;
+  }
+  return firstMatch;
+}
+
+function clearSelectFilter(filterEl, selectEl) {
+  if (filterEl) filterEl.value = '';
+  if (selectEl) filterSelectOptions(selectEl, '');
+}
+
+function clearEntrySelectFilters() {
+  clearSelectFilter($('#fProjectFilter'), $('#fProject'));
+  clearSelectFilter($('#fIssueFilter'), $('#fIssue'));
+}
+
+function syncProjectFilterVisibility() {
+  const fil = $('#fProjectFilter');
+  const sel = $('#fProject');
+  const wrap = fil && fil.closest('.select-with-filter');
+  if (!fil || !sel) return;
+  const hide = !!sel.hidden;
+  fil.hidden = hide;
+  if (wrap) wrap.classList.toggle('fallback-mode', hide);
+}
+
+function bindSelectFilter(filterEl, selectEl) {
+  if (!filterEl || !selectEl) return;
+  filterEl.addEventListener('input', () => {
+    filterSelectOptions(selectEl, filterEl.value);
+  });
+  filterEl.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    const first = filterSelectOptions(selectEl, filterEl.value);
+    if (!first) return;
+    selectEl.value = first.value;
+    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+
+function updateJiraChip(status) {
+  const chip = $('#jiraChip');
+  if (!chip) return;
+  const was = jiraConfigured;
+  jiraConfigured = !!(status && status.configured);
+  if (status && status.myself) {
+    jiraMyself = status.myself;
+  }
+  if (jiraConfigured) {
+    const name = (jiraMyself && jiraMyself.displayName) || '';
+    chip.textContent = name ? `Jira: ${name}` : 'Jira: połączona';
+    chip.className = 'jira-chip ok';
+  } else if (status && status.hasToken === false) {
+    chip.textContent = 'Jira: brak tokena';
+    chip.className = 'jira-chip warn';
+  } else {
+    chip.textContent = 'Jira: brak tokena';
+    chip.className = 'jira-chip warn';
+  }
+  if (jiraConfigured && !was) {
+    loadJiraProjects().catch(() => {});
+  } else if (!jiraConfigured) {
+    populateProjectSelect([]);
+  }
+}
+
+async function refreshJiraStatus() {
+  try {
+    const status = await api('/api/jira/status');
+    updateJiraChip(status);
+    return status;
+  } catch {
+    updateJiraChip({ configured: false, hasToken: false });
+    return null;
+  }
+}
+
+let jiraProjects = []; // [{ key, name, id }]
+let lastIssueKeys = []; // from current month grid for datalist
+let lastAutoPullAt = 0;
+const AUTO_PULL_THROTTLE_MS = 60 * 1000;
+
+function getProjectValue() {
+  const sel = $('#fProject');
+  const txt = $('#fProjectText');
+  if (jiraConfigured && sel && !sel.hidden) {
+    return (sel.value || '').trim();
+  }
+  if (txt && !txt.hidden) return (txt.value || '').trim();
+  if (sel) return (sel.value || '').trim();
+  if (txt) return (txt.value || '').trim();
+  return '';
+}
+
+function setProjectValue(key) {
+  const sel = $('#fProject');
+  const txt = $('#fProjectText');
+  const k = key || '';
+  if (jiraConfigured && sel) {
+    // Ensure option exists
+    if (k && ![...sel.options].some((o) => o.value === k)) {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      sel.appendChild(opt);
+    }
+    sel.value = k;
+    sel.hidden = false;
+    sel.required = true;
+    if (txt) {
+      txt.hidden = true;
+      txt.required = false;
+      txt.value = k;
+    }
+  } else {
+    if (sel) {
+      sel.hidden = true;
+      sel.required = false;
+    }
+    if (txt) {
+      txt.hidden = false;
+      txt.required = true;
+      txt.value = k;
+    }
+  }
+  syncProjectFilterVisibility();
+}
+
+function populateProjectSelect(projects) {
+  const sel = $('#fProject');
+  const txt = $('#fProjectText');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— wybierz projekt —</option>';
+  for (const p of projects || []) {
+    const opt = document.createElement('option');
+    opt.value = p.key;
+    opt.textContent = p.name && p.name !== p.key ? `${p.key} — ${p.name}` : p.key;
+    sel.appendChild(opt);
+  }
+  if (current) sel.value = current;
+  if (jiraConfigured && projects && projects.length) {
+    sel.hidden = false;
+    sel.required = true;
+    if (txt) {
+      txt.hidden = true;
+      txt.required = false;
+    }
+  } else {
+    sel.hidden = true;
+    sel.required = false;
+    if (txt) {
+      txt.hidden = false;
+      txt.required = true;
+    }
+  }
+  clearSelectFilter($('#fProjectFilter'), sel);
+  syncProjectFilterVisibility();
+}
+
+async function loadJiraProjects() {
+  if (!jiraConfigured) {
+    jiraProjects = [];
+    populateProjectSelect([]);
+    return [];
+  }
+  try {
+    const data = await api('/api/jira/projects');
+    jiraProjects = data.projects || [];
+    populateProjectSelect(jiraProjects);
+    return jiraProjects;
+  } catch (err) {
+    jiraProjects = [];
+    populateProjectSelect([]);
+    return [];
+  }
+}
+
+function updateIssueDatalist(keys) {
+  // Kept for month-grid keys fallback when Jira offline
+  lastIssueKeys = keys || lastIssueKeys;
+}
+
+let projectIssues = []; // [{ key, summary, status }]
+let projectUsers = []; // [{ accountId, displayName, emailAddress }]
+let issuesLoadToken = 0;
+let usersLoadToken = 0;
+
+function getIssueValue() {
+  const sel = $('#fIssue');
+  const custom = $('#fIssueCustom');
+  if (!sel) return '';
+  if (sel.value === CUSTOM_ISSUE_VALUE) {
+    return custom ? custom.value.trim() : '';
+  }
+  return (sel.value || '').trim();
+}
+
+function setIssueCustomVisible(show) {
+  const custom = $('#fIssueCustom');
+  if (!custom) return;
+  custom.hidden = !show;
+  if (show) custom.focus();
+}
+
+function populateIssueSelect(issues, { selectedKey = '', allowEmpty = true } = {}) {
+  const sel = $('#fIssue');
+  if (!sel) return;
+  projectIssues = issues || [];
+  const opts = [];
+  if (allowEmpty) {
+    opts.push(
+      `<option value="">${
+        jiraConfigured
+          ? '— wybierz zgłoszenie —'
+          : '— brak Jiry: wpisz własny klucz —'
+      }</option>`
+    );
+  }
+  for (const iss of projectIssues) {
+    const label = iss.summary
+      ? `${iss.key} — ${iss.summary}`
+      : iss.key;
+    const selAttr = iss.key === selectedKey ? ' selected' : '';
+    opts.push(
+      `<option value="${escapeHtml(iss.key)}"${selAttr}>${escapeHtml(label)}</option>`
+    );
+  }
+  // Fallback keys from local month data if list empty
+  if (!projectIssues.length && lastIssueKeys.length) {
+    for (const k of lastIssueKeys) {
+      if (!k) continue;
+      const selAttr = k === selectedKey ? ' selected' : '';
+      opts.push(`<option value="${escapeHtml(k)}"${selAttr}>${escapeHtml(k)}</option>`);
+    }
+  }
+  const customSelected = selectedKey && ![...projectIssues.map((i) => i.key), ...lastIssueKeys].includes(selectedKey);
+  opts.push(
+    `<option value="${CUSTOM_ISSUE_VALUE}"${customSelected ? ' selected' : ''}>— inne / własne —</option>`
+  );
+  sel.innerHTML = opts.join('');
+  if (customSelected && selectedKey) {
+    sel.value = CUSTOM_ISSUE_VALUE;
+    const custom = $('#fIssueCustom');
+    if (custom) {
+      custom.hidden = false;
+      custom.value = selectedKey;
+    }
+  } else if (selectedKey && [...sel.options].some((o) => o.value === selectedKey)) {
+    sel.value = selectedKey;
+    setIssueCustomVisible(false);
+  } else {
+    setIssueCustomVisible(sel.value === CUSTOM_ISSUE_VALUE);
+  }
+  const issFilter = $('#fIssueFilter');
+  if (issFilter && issFilter.value.trim()) {
+    filterSelectOptions(sel, issFilter.value);
+  } else {
+    clearSelectFilter(issFilter, sel);
+  }
+}
+
+async function loadIssuesForProject(projectKey, { selectedKey = '' } = {}) {
+  const token = ++issuesLoadToken;
+  if (!projectKey || !jiraConfigured) {
+    populateIssueSelect([], { selectedKey });
+    if (!jiraConfigured) {
+      // Force custom entry mode
+      const sel = $('#fIssue');
+      if (sel) {
+        sel.value = CUSTOM_ISSUE_VALUE;
+        setIssueCustomVisible(true);
+        if (selectedKey && $('#fIssueCustom')) $('#fIssueCustom').value = selectedKey;
+      }
+    }
+    return [];
+  }
+  populateIssueSelect([], { selectedKey: '' });
+  const sel = $('#fIssue');
+  if (sel) {
+    sel.innerHTML = '<option value="">Ładowanie zadań…</option>';
+  }
+  try {
+    const data = await api(
+      `/api/jira/issues?project=${encodeURIComponent(projectKey)}`
+    );
+    if (token !== issuesLoadToken) return data.issues || [];
+    populateIssueSelect(data.issues || [], { selectedKey });
+    // Auto-fill summary if selected
+    if (selectedKey) {
+      const found = (data.issues || []).find((i) => i.key === selectedKey);
+      if (found && found.summary && !$('#fSummary').value) {
+        $('#fSummary').value = found.summary;
+      }
+    }
+    return data.issues || [];
+  } catch (err) {
+    if (token !== issuesLoadToken) return [];
+    populateIssueSelect([], { selectedKey });
+    toast(`Zadania: ${err.message}`, 'error');
+    return [];
+  }
+}
+
+function getAuthorDisplayName() {
+  const sel = $('#fAuthor');
+  if (!sel) return DEFAULT_AUTHOR;
+  const opt = sel.selectedOptions && sel.selectedOptions[0];
+  if (opt && opt.dataset && opt.dataset.display) return opt.dataset.display;
+  return (sel.value || '').trim() || DEFAULT_AUTHOR;
+}
+
+function defaultAuthorName() {
+  if (jiraMyself && jiraMyself.displayName) return jiraMyself.displayName;
+  if (jiraMyself && jiraMyself.email) return jiraMyself.email;
+  return DEFAULT_AUTHOR || 'Konto API';
+}
+
+function updateAuthorNote() {
+  const note = $('#authorNote');
+  if (!note) return;
+  const me = defaultAuthorName();
+  const selected = getAuthorDisplayName();
+  const mismatch =
+    jiraConfigured &&
+    selected &&
+    me &&
+    selected.trim().toLowerCase() !== me.trim().toLowerCase();
+  note.hidden = !mismatch;
+}
+
+function populateAuthorSelect(users, { selectedName = '' } = {}) {
+  const sel = $('#fAuthor');
+  if (!sel) return;
+  projectUsers = users || [];
+  const meName = defaultAuthorName();
+  const meId = (jiraMyself && jiraMyself.accountId) || '';
+  const want = selectedName || meName;
+
+  const seen = new Set();
+  const opts = [];
+
+  function addUser(u, selected) {
+    const name = u.displayName || u.emailAddress || '';
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    const val = u.accountId || name;
+    const label = u.emailAddress && u.emailAddress !== name
+      ? `${name} (${u.emailAddress})`
+      : name;
+    opts.push(
+      `<option value="${escapeHtml(val)}" data-display="${escapeHtml(name)}"${
+        selected ? ' selected' : ''
+      }>${escapeHtml(label)}</option>`
+    );
+  }
+
+  // Myself first
+  addUser(
+    {
+      accountId: meId,
+      displayName: meName,
+      emailAddress: (jiraMyself && jiraMyself.email) || '',
+    },
+    want.trim().toLowerCase() === meName.trim().toLowerCase()
+  );
+
+  for (const u of projectUsers) {
+    const isSel =
+      (u.displayName || '').trim().toLowerCase() === want.trim().toLowerCase();
+    addUser(u, isSel && want.trim().toLowerCase() !== meName.trim().toLowerCase());
+  }
+
+  // If selected author not in list, add it
+  if (want && !seen.has(want)) {
+    addUser({ displayName: want, accountId: '', emailAddress: '' }, true);
+  }
+
+  sel.innerHTML = opts.join('') || `<option value="${escapeHtml(meName)}" data-display="${escapeHtml(meName)}" selected>${escapeHtml(meName)}</option>`;
+  updateAuthorNote();
+}
+
+async function loadUsersForProject(projectKey, { selectedName = '' } = {}) {
+  const token = ++usersLoadToken;
+  const fallbackName = selectedName || defaultAuthorName();
+  if (!jiraConfigured) {
+    populateAuthorSelect([], { selectedName: fallbackName });
+    return [];
+  }
+  try {
+    const meQuery =
+      (jiraMyself && (jiraMyself.displayName || jiraMyself.email)) || 'a';
+    const q = projectKey
+      ? `/api/jira/users?project=${encodeURIComponent(projectKey)}`
+      : `/api/jira/users?query=${encodeURIComponent(meQuery)}`;
+    const data = await api(q);
+    if (token !== usersLoadToken) return data.users || [];
+    populateAuthorSelect(data.users || [], { selectedName: fallbackName });
+    return data.users || [];
+  } catch (err) {
+    if (token !== usersLoadToken) return [];
+    populateAuthorSelect([], { selectedName: fallbackName });
+    return [];
+  }
+}
+
+async function onProjectChanged() {
+  const project = getProjectValue();
+  const keepIssue = getIssueValue();
+  const keepAuthor = getAuthorDisplayName();
+  clearSelectFilter($('#fIssueFilter'), $('#fIssue'));
+  await Promise.all([
+    loadIssuesForProject(project, { selectedKey: keepIssue }),
+    loadUsersForProject(project, { selectedName: keepAuthor || defaultAuthorName() }),
+  ]);
+}
+
+/** Silent auto-pull; toast only on change or error. Returns pull result or null. */
+async function autoPullFromJira({ force = false } = {}) {
+  if (!jiraConfigured) return null;
+  const now = Date.now();
+  if (!force && now - lastAutoPullAt < AUTO_PULL_THROTTLE_MS) return null;
+  lastAutoPullAt = now;
+  const month = monthInput.value || currentMonth();
+  try {
+    const data = await api('/api/jira/pull', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month }),
+    });
+    const changed =
+      (data.imported || 0) + (data.updated || 0) + (data.removed || 0) > 0;
+    if (changed) {
+      toast(
+        `Sync: +${data.imported} / ⌁${data.updated} / −${data.removed} · ${data.totalHours} h`,
+        'ok'
+      );
+      await loadDashboard({ skipPull: true });
+    }
+    return data;
+  } catch (err) {
+    toast(`Auto-sync: ${err.message}`, 'error');
+    return null;
+  }
+}
+
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function todayParts() {
+  const d = new Date();
+  return {
+    month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+    day: d.getDate(),
+    date: d,
+  };
+}
+
+function formatTodayLong(d) {
+  return new Intl.DateTimeFormat('pl-PL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(d);
+}
+
+function toLocalInputValue(isoOrLocal) {
+  if (!isoOrLocal) return '';
+  // Accept Jira-style 2026-09-01T09:07:00.000+0200 or ISO
+  const s = String(isoOrLocal);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
+  if (m) return `${m[1]}T${m[2]}:${m[3]}`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalInputValue(v) {
+  // Keep as local wall time with seconds: YYYY-MM-DDTHH:mm:00
+  if (!v) return '';
+  return v.length === 16 ? `${v}:00` : v;
+}
+
+function formatStarted(s) {
+  const m = String(s).match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
+  if (m) return `${m[1]} ${m[2]}:${m[3]}`;
+  return s;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const ct = res.headers.get('content-type') || '';
+  const data = ct.includes('application/json') ? await res.json() : await res.text();
+  if (!res.ok) {
+    const err = (data && data.error) || res.statusText || 'Request failed';
+    throw new Error(err);
+  }
+  return data;
+}
+
+function formatCellHours(h) {
+  if (!h || h === 0) return '';
+  // Compact number + unit (2 → 2 h, 2.5 → 2.5 h, 2.25 → 2.25 h)
+  const rounded = Math.round(h * 100) / 100;
+  return `${rounded} h`;
+}
+
+function renderDayGrid(data) {
+  const head = $('#dayGridHead');
+  const body = $('#dayGridBody');
+  const foot = $('#dayGridFoot');
+  const hint = $('.section-hint');
+  const days = data.days || [];
+  const allRows = data.dayGrid || [];
+  const rows = projectFilter
+    ? allRows.filter((r) => (r.project_key || '') === projectFilter)
+    : allRows;
+  const viewingMonth = monthInput.value || currentMonth();
+  const today = todayParts();
+  const todayDay = viewingMonth === today.month ? today.day : null;
+
+  if (hint) {
+    const filterNote = projectFilter
+      ? ` · filtr: <strong>${escapeHtml(projectFilter)}</strong> (kliknij ponownie, by wyczyścić)`
+      : '';
+    if (todayDay != null) {
+      hint.innerHTML = `Wiersze = zadania · kolumny = dni · kliknij komórkę · auto-sync z Jirą${filterNote}<br><strong class="today-label">Dziś: ${formatTodayLong(today.date)}</strong>`;
+    } else {
+      hint.innerHTML = `Wiersze = zadania · kolumny = dni · kliknij komórkę · auto-sync z Jirą${filterNote}`;
+    }
+  }
+
+  if (!days.length) {
+    head.innerHTML = '';
+    body.innerHTML = '<tr><td class="empty">Brak danych miesiąca.</td></tr>';
+    foot.innerHTML = '';
+    return;
+  }
+
+  const dayHeaders = days
+    .map((d) => {
+      const isToday = todayDay != null && d === todayDay;
+      const cls = isToday ? 'col-day today-col' : 'col-day';
+      const label = isToday
+        ? `<span class="day-num">${d}</span><span class="day-today-tag">dziś</span>`
+        : String(d);
+      const title = isToday ? `Dziś — dzień ${d}` : `Dzień ${d}`;
+      return `<th class="${cls}" data-day="${d}" title="${title}">${label}</th>`;
+    })
+    .join('');
+  head.innerHTML = `<tr>
+    <th class="col-task">Zadanie</th>
+    ${dayHeaders}
+    <th class="col-total">Suma</th>
+  </tr>`;
+
+  if (!rows.length) {
+    const emptyMsg = projectFilter
+      ? `Brak zadań projektu ${escapeHtml(projectFilter)} w tym miesiącu.`
+      : 'Brak wpisów w tym miesiącu — połącz z Jirą lub dodaj ręcznie.';
+    body.innerHTML = `<tr><td class="empty" colspan="${days.length + 2}">${emptyMsg}</td></tr>`;
+    foot.innerHTML = '';
+    return;
+  }
+
+  body.innerHTML = rows
+    .map((r) => {
+      const cells = (r.hoursByDay || [])
+        .map((h, i) => {
+          const d = days[i];
+          const isToday = todayDay != null && d === todayDay;
+          let cls = h > 0 ? 'cell-hours has-time editable' : 'cell-hours zero editable';
+          if (isToday) cls += ' today-col';
+          const title = `Kliknij, aby dodać godziny · ${r.issue_key || 'zadanie'} · dzień ${d}`;
+          return `<td class="${cls}" data-day="${d}" title="${escapeHtml(title)}">${escapeHtml(formatCellHours(h))}</td>`;
+        })
+        .join('');
+      const proj = r.project_key
+        ? `<span class="task-proj">${escapeHtml(r.project_key)}</span>`
+        : '';
+      const sum = r.issue_summary
+        ? `<span class="task-sum">${escapeHtml(r.issue_summary)}</span>`
+        : '';
+      const ik = r.issue_key === '(none)' ? '' : (r.issue_key || '');
+      return `<tr
+        data-issue-key="${escapeHtml(ik)}"
+        data-issue-summary="${escapeHtml(r.issue_summary || '')}"
+        data-project-key="${escapeHtml(r.project_key || '')}"
+      >
+        <td class="col-task">
+          <span class="task-key">${escapeHtml(r.issue_key || '—')}</span>${proj}
+          ${sum}
+        </td>
+        ${cells}
+        <td class="col-total">${escapeHtml(formatCellHours(r.totalHours) || '0')}</td>
+      </tr>`;
+    })
+    .join('');
+
+  // Footer totals: for filtered view recompute from visible rows
+  let dayTotals;
+  let grandTotal;
+  if (projectFilter) {
+    dayTotals = days.map((_, i) => {
+      const sec = rows.reduce((acc, r) => acc + ((r.secondsByDay && r.secondsByDay[i]) || 0), 0);
+      return Math.round((sec / 3600) * 100) / 100;
+    });
+    const totSec = rows.reduce((acc, r) => acc + (r.totalSeconds || 0), 0);
+    grandTotal = Math.round((totSec / 3600) * 100) / 100;
+  } else {
+    dayTotals = data.dayTotalsHours || days.map(() => 0);
+    grandTotal = data.totalHours;
+  }
+  const totCells = dayTotals
+    .map((h, i) => {
+      const d = days[i];
+      const isToday = todayDay != null && d === todayDay;
+      let cls = h > 0 ? 'cell-hours has-time' : 'cell-hours zero';
+      if (isToday) cls += ' today-col';
+      return `<td class="${cls}" data-day="${d}">${escapeHtml(formatCellHours(h))}</td>`;
+    })
+    .join('');
+  foot.innerHTML = `<tr>
+    <td class="col-task">Suma dzienna / łącznie</td>
+    ${totCells}
+    <td class="col-total">${escapeHtml(formatCellHours(grandTotal) || '0')}</td>
+  </tr>`;
+
+  scrollDayGridToToday(todayDay);
+}
+
+function scrollDayGridToToday(todayDay) {
+  if (todayDay == null) return;
+  requestAnimationFrame(() => {
+    const wrap = document.querySelector('.grid-wrap');
+    const target = document.querySelector(`#dayGridHead th.today-col`);
+    if (!wrap || !target) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const cellRect = target.getBoundingClientRect();
+    const delta =
+      cellRect.left - wrapRect.left - wrapRect.width / 2 + cellRect.width / 2;
+    wrap.scrollBy({ left: delta, behavior: 'smooth' });
+  });
+}
+
+async function loadDashboard(_opts = {}) {
+  const month = monthInput.value || currentMonth();
+  monthInput.value = month;
+  const data = await api(`/api/dashboard?month=${encodeURIComponent(month)}`);
+
+  $('#statTotal').textContent = `${data.totalHours.toFixed(2)} h`;
+  $('#statCount').textContent = String(data.entryCount);
+
+  lastDashboard = data;
+
+  // Drop filter if that project is gone this month
+  if (projectFilter && !(data.byProject || []).some((p) => p.project_key === projectFilter)) {
+    projectFilter = null;
+  }
+
+  renderProjectChips(data);
+  renderDayGrid(data);
+  const entries = projectFilter
+    ? (data.entries || []).filter((e) => (e.project_key || '') === projectFilter)
+    : data.entries;
+  renderEntries(entries);
+  const keys = (data.dayGrid || [])
+    .map((r) => r.issue_key)
+    .filter((k) => k && k !== '(none)');
+  updateIssueDatalist(keys);
+}
+
+
+function renderProjectChips(data) {
+  const projects = $('#statProjects');
+  if (!projects) return;
+  if (!data.byProject || !data.byProject.length) {
+    projects.textContent = '—';
+    return;
+  }
+  projects.innerHTML = data.byProject
+    .map((p) => {
+      const key = p.project_key || '';
+      const active = projectFilter === key ? ' active' : '';
+      const title = projectFilter === key
+        ? `Filtr: ${key} — kliknij, by pokazać wszystkie`
+        : `Pokaż tylko zadania projektu ${key}`;
+      return `<button type="button" class="chip chip-filter${active}" data-project-key="${escapeHtml(key)}" title="${escapeHtml(title)}">${escapeHtml(key)}<strong>${p.hours.toFixed(2)} h</strong></button>`;
+    })
+    .join('');
+}
+
+function applyProjectFilter(key) {
+  if (!key) {
+    projectFilter = null;
+  } else if (projectFilter === key) {
+    projectFilter = null; // toggle off
+  } else {
+    projectFilter = key;
+  }
+  if (!lastDashboard) return;
+  renderProjectChips(lastDashboard);
+  renderDayGrid(lastDashboard);
+  const entries = projectFilter
+    ? (lastDashboard.entries || []).filter((e) => (e.project_key || '') === projectFilter)
+    : lastDashboard.entries;
+  renderEntries(entries);
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+const ENTRIES_OPEN_KEY = 'tt_entries_open';
+
+function restoreEntriesSectionState() {
+  if (!entriesSection) return;
+  try {
+    entriesSection.open = localStorage.getItem(ENTRIES_OPEN_KEY) === 'true';
+  } catch (_) {
+    entriesSection.open = false;
+  }
+}
+
+if (entriesSection) {
+  entriesSection.addEventListener('toggle', () => {
+    try {
+      localStorage.setItem(ENTRIES_OPEN_KEY, String(entriesSection.open));
+    } catch (_) {
+      // Ignore unavailable localStorage (for example in private browsing).
+    }
+  });
+  restoreEntriesSectionState();
+}
+
+function renderEntries(entries) {
+  if (!entries.length) {
+    entriesBody.innerHTML =
+      '<tr><td colspan="6" class="empty">Brak wpisów — połącz z Jirą lub dodaj ręcznie.</td></tr>';
+    return;
+  }
+  entriesBody.innerHTML = entries
+    .map(
+      (e) => `
+    <tr data-id="${e.id}">
+      <td>${escapeHtml(formatStarted(e.started))}</td>
+      <td>${escapeHtml(e.project_key || '—')}</td>
+      <td class="issue-cell">
+        <div class="key">${escapeHtml(e.issue_key || '—')}</div>
+        <div class="sum">${escapeHtml(e.issue_summary || '')}</div>
+      </td>
+      <td>${escapeHtml(e.time_spent)} <span class="sum">(${e.hours.toFixed(2)} h)</span></td>
+      <td>${escapeHtml(e.comment || '')}</td>
+      <td class="actions-cell">
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-edit="${e.id}">Edytuj</button>
+          <button type="button" class="btn btn-danger btn-sm" data-del="${e.id}">Usuń</button>
+        </div>
+      </td>
+    </tr>`
+    )
+    .join('');
+}
+
+async function openCreate() {
+  $('#dialogTitle').textContent = 'Nowy wpis';
+  $('#entryId').value = '';
+  clearEntrySelectFilters();
+  setProjectValue('');
+  populateIssueSelect([], { selectedKey: '' });
+  $('#fSummary').value = '';
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  $('#fStarted').value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(
+    now.getHours()
+  )}:${pad(now.getMinutes())}`;
+  $('#fDuration').value = '1';
+  $('#fComment').value = '';
+  // Prefer the Jira account tied to the API token as default author
+  if (jiraConfigured && !jiraMyself) {
+    try { await refreshJiraStatus(); } catch (_) {}
+  }
+  populateAuthorSelect([], { selectedName: defaultAuthorName() });
+  dialog.showModal();
+  if (jiraConfigured) {
+    loadUsersForProject('', { selectedName: defaultAuthorName() }).catch(() => {});
+  }
+}
+
+async function openAddHoursFromCell({ issueKey, issueSummary, projectKey, day }) {
+  const month = monthInput.value || currentMonth();
+  const pad = (n) => String(n).padStart(2, '0');
+  const today = todayParts();
+  const now = new Date();
+  let hh = pad(now.getHours());
+  let mm = pad(now.getMinutes());
+  if (!(month === today.month && Number(day) === today.day)) {
+    hh = '09';
+    mm = '00';
+  }
+  const label = issueKey || 'zadanie';
+  $('#dialogTitle').textContent = `Dodaj godziny · ${label} · dzień ${day}`;
+  $('#entryId').value = '';
+  clearEntrySelectFilters();
+  setProjectValue(projectKey || '');
+  $('#fSummary').value = issueSummary || '';
+  $('#fStarted').value = `${month}-${pad(day)}T${hh}:${mm}`;
+  $('#fDuration').value = '1';
+  $('#fComment').value = '';
+  populateAuthorSelect([], { selectedName: defaultAuthorName() });
+  dialog.showModal();
+  requestAnimationFrame(() => {
+    const dur = $('#fDuration');
+    if (dur) {
+      dur.focus();
+      dur.select();
+    }
+  });
+  if (projectKey) {
+    await Promise.all([
+      loadIssuesForProject(projectKey, { selectedKey: issueKey || '' }),
+      loadUsersForProject(projectKey, { selectedName: defaultAuthorName() }),
+    ]);
+  } else {
+    populateIssueSelect([], { selectedKey: issueKey || '' });
+  }
+}
+
+async function openEdit(id) {
+  const e = await api(`/api/entries/${id}`);
+  $('#dialogTitle').textContent = 'Edytuj wpis';
+  $('#entryId').value = String(e.id);
+  clearEntrySelectFilters();
+  setProjectValue(e.project_key || '');
+  $('#fSummary').value = e.issue_summary || '';
+  $('#fStarted').value = toLocalInputValue(e.started);
+  const h = e.time_spent_seconds / 3600;
+  $('#fDuration').value = Number.isInteger(h) ? String(h) : h.toFixed(2);
+  $('#fComment').value = e.comment || '';
+  populateAuthorSelect([], { selectedName: e.author || defaultAuthorName() });
+  dialog.showModal();
+  if (e.project_key) {
+    await Promise.all([
+      loadIssuesForProject(e.project_key, { selectedKey: e.issue_key || '' }),
+      loadUsersForProject(e.project_key, {
+        selectedName: e.author || defaultAuthorName(),
+      }),
+    ]);
+  } else {
+    populateIssueSelect([], { selectedKey: e.issue_key || '' });
+  }
+}
+
+entryForm.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const id = $('#entryId').value;
+  const payload = {
+    project_key: getProjectValue(),
+    issue_key: getIssueValue(),
+    issue_summary: $('#fSummary').value.trim(),
+    started: fromLocalInputValue($('#fStarted').value),
+    duration: $('#fDuration').value.trim(),
+    comment: $('#fComment').value.trim(),
+    author: getAuthorDisplayName(),
+  };
+  try {
+    if (id) {
+      const res = await api(`/api/entries/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      toast(res.updatedInJira ? 'Zapisano i zaktualizowano w Jirze' : 'Zapisano zmiany');
+    } else {
+      const res = await api('/api/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.pushedToJira && res.authorMismatch) {
+        toast(
+          `Dodano → Jira (na koncie ${res.pushedAsAuthor || 'API'}; lokalnie: ${payload.author})`,
+          'ok'
+        );
+      } else if (res.pushedToJira) {
+        toast('Dodano wpis i wysłano do Jiry');
+      } else {
+        toast('Dodano wpis');
+      }
+    }
+    dialog.close();
+    await loadDashboard();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+$('#btnCancel').addEventListener('click', () => dialog.close());
+$('#btnAdd').addEventListener('click', openCreate);
+
+$('#dayGridBody').addEventListener('click', (ev) => {
+  const cell = ev.target.closest('td.cell-hours.editable');
+  if (!cell) return;
+  const row = cell.closest('tr');
+  if (!row) return;
+  const day = Number(cell.getAttribute('data-day'));
+  if (!day) return;
+  openAddHoursFromCell({
+    issueKey: row.getAttribute('data-issue-key') || '',
+    issueSummary: row.getAttribute('data-issue-summary') || '',
+    projectKey: row.getAttribute('data-project-key') || '',
+    day,
+  });
+});
+
+entriesBody.addEventListener('click', async (ev) => {
+  const editId = ev.target.getAttribute('data-edit');
+  const delId = ev.target.getAttribute('data-del');
+  if (editId) {
+    try {
+      await openEdit(editId);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+  if (delId) {
+    if (!confirm('Usunąć ten wpis?')) return;
+    try {
+      await api(`/api/entries/${delId}`, { method: 'DELETE' });
+      toast('Usunięto');
+      await loadDashboard();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+});
+
+$('#btnExport').addEventListener('click', () => {
+  const month = monthInput.value || currentMonth();
+  window.location.href = `/api/export?month=${encodeURIComponent(month)}`;
+});
+
+
+// Follow calendar month until the user picks a different (past/future) month.
+let followLiveMonth = true;
+
+monthInput.addEventListener('change', () => {
+  followLiveMonth = monthInput.value === currentMonth();
+  projectFilter = null;
+  loadDashboard().catch((err) => toast(err.message, 'error'));
+});
+
+/** Switch to the real current month when the calendar rolls over (if still following live). */
+function ensureLiveMonth() {
+  if (!followLiveMonth) return false;
+  const now = currentMonth();
+  if ((monthInput.value || '') === now) return false;
+  monthInput.value = now;
+  return true;
+}
+
+
+const statProjectsEl = $('#statProjects');
+if (statProjectsEl) {
+  statProjectsEl.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.chip-filter');
+    if (!btn) return;
+    applyProjectFilter(btn.getAttribute('data-project-key') || '');
+  });
+}
+
+// --- Jira sync & settings ---
+const jiraDialog = $('#jiraDialog');
+const jiraForm = $('#jiraForm');
+
+$('#btnJiraSettings').addEventListener('click', async () => {
+  try {
+    const status = await refreshJiraStatus();
+    $('#jiraBaseUrl').value = (status && status.baseUrl) || 'https://niteam.atlassian.net';
+    $('#jiraEmail').value = (status && status.email) || 'grzegorz.osowski@netinteractive.pl';
+    $('#jiraToken').value = '';
+    $('#jiraToken').placeholder = status && status.hasToken
+      ? '•••••••• (pozostaw puste = bez zmian)'
+      : 'Wklej token API';
+  } catch (_) {
+    $('#jiraBaseUrl').value = 'https://niteam.atlassian.net';
+    $('#jiraEmail').value = 'grzegorz.osowski@netinteractive.pl';
+    $('#jiraToken').value = '';
+  }
+  jiraDialog.showModal();
+});
+
+$('#btnJiraCancel').addEventListener('click', () => jiraDialog.close());
+
+jiraForm.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const body = {
+    baseUrl: $('#jiraBaseUrl').value.trim(),
+    email: $('#jiraEmail').value.trim(),
+  };
+  const token = $('#jiraToken').value;
+  if (token) body.apiToken = token;
+  try {
+    const status = await api('/api/jira/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    updateJiraChip(status);
+    if (status.configured) {
+      await loadJiraProjects();
+    } else {
+      populateProjectSelect([]);
+    }
+    jiraDialog.close();
+    toast(status.configured ? 'Zapisano ustawienia Jira' : 'Zapisano (brak tokena)');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+// Project / issue / author dialog wiring
+bindSelectFilter($('#fProjectFilter'), $('#fProject'));
+bindSelectFilter($('#fIssueFilter'), $('#fIssue'));
+syncProjectFilterVisibility();
+
+const fProject = $('#fProject');
+if (fProject) {
+  fProject.addEventListener('change', () => {
+    clearSelectFilter($('#fIssueFilter'), $('#fIssue'));
+    onProjectChanged().catch((err) => toast(err.message, 'error'));
+  });
+}
+const fProjectText = $('#fProjectText');
+if (fProjectText) {
+  fProjectText.addEventListener('change', () => {
+    onProjectChanged().catch((err) => toast(err.message, 'error'));
+  });
+}
+const fIssue = $('#fIssue');
+if (fIssue) {
+  fIssue.addEventListener('change', () => {
+    if (fIssue.value === CUSTOM_ISSUE_VALUE) {
+      setIssueCustomVisible(true);
+      return;
+    }
+    setIssueCustomVisible(false);
+    const found = projectIssues.find((i) => i.key === fIssue.value);
+    if (found && found.summary) {
+      $('#fSummary').value = found.summary;
+    }
+  });
+}
+const fAuthor = $('#fAuthor');
+if (fAuthor) {
+  fAuthor.addEventListener('change', updateAuthorNote);
+}
+
+// Init
+monthInput.value = currentMonth();
+(async function init() {
+  try {
+    await refreshJiraStatus();
+    if (jiraConfigured) {
+      await loadJiraProjects();
+    } else {
+      populateProjectSelect([]);
+    }
+  } catch (_) {
+    populateProjectSelect([]);
+  }
+  try {
+    await loadDashboard();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  // Silent auto-pull on load (after first paint of local data)
+  if (jiraConfigured) {
+    autoPullFromJira({ force: true }).catch(() => {});
+  }
+})();
+
+// Auto-switch to the new calendar month + auto-pull on focus/visibility
+async function onBecomeVisible() {
+  if (document.visibilityState && document.visibilityState !== 'visible') return;
+  try {
+    if (ensureLiveMonth()) {
+      await loadDashboard();
+      toast(`Przełączono na ${monthInput.value}`);
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  if (!jiraConfigured) return;
+  autoPullFromJira({ force: false }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') onBecomeVisible();
+});
+window.addEventListener('focus', onBecomeVisible);
+// Also catch midnight/month rollover while the tab stays open
+setInterval(() => {
+  if (document.visibilityState && document.visibilityState !== 'visible') return;
+  onBecomeVisible().catch(() => {});
+}, 60 * 1000);
+
