@@ -4,7 +4,7 @@ A local app for viewing and logging **Jira worklogs** in a monthly layout. Two-w
 
 Open **http://127.0.0.1:3847** after starting the server.
 
-![Jira Time Tracker — monthly hours grid](docs/screenshot.png)
+![Jira Time Tracker — monthly grid filtered to ADM](docs/screenshot.png)
 
 ## Requirements
 
