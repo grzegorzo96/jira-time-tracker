@@ -2,6 +2,300 @@
 
 const $ = (sel) => document.querySelector(sel);
 
+const LANG_KEY = 'jtt-lang';
+const I18N = {
+  en: {
+    docTitle: 'Jira Time Tracker — Worklogs from Jira',
+    subtitle: 'Worklogs from Jira',
+    month: 'Month',
+    jiraChipTitle: 'Jira connection status',
+    btnConnectJira: 'Connect to Jira',
+    btnConnectJiraTitle: 'Jira settings',
+    btnExport: 'Export CSV',
+    btnExportTitle: 'Export CSV for the selected month',
+    statTotal: 'Total hours this month',
+    statCount: 'Entries this month',
+    statProjects: 'Hours by project',
+    gridTitle: 'Monthly grid',
+    gridHint: 'Rows = issues · columns = days · click a cell · auto-sync with Jira',
+    gridHintFilter: ' · filter: <strong>{key}</strong> (click again to clear)',
+    gridHintToday: 'Today: {date}',
+    btnAdd: '+ New entry',
+    gridEmptyInitial: 'No data — connect to Jira or add an entry.',
+    gridEmptyMonth: 'No data for this month.',
+    gridEmptyFiltered: 'No issues for project {key} this month.',
+    gridEmptyEntries: 'No entries this month — connect to Jira or add one manually.',
+    entriesTitle: 'Entry list',
+    entriesHint: 'Details and editing for individual worklogs',
+    entriesExpand: 'Expand to see entries',
+    thStart: 'Start',
+    thProject: 'Project',
+    thIssue: 'Issue',
+    thTime: 'Time',
+    thComment: 'Comment',
+    thActions: 'Actions',
+    entriesEmpty: 'No entries — connect to Jira or add one manually.',
+    dialogNew: 'New entry',
+    dialogEdit: 'Edit entry',
+    dialogAddHours: 'Add hours · {label} · day {day}',
+    labelProject: 'Project',
+    labelIssue: 'Issue',
+    labelSummary: 'Summary',
+    labelStart: 'Start',
+    labelDuration: 'Time (hours or hh:mm)',
+    labelComment: 'Comment',
+    labelAuthor: 'Author',
+    searchPlaceholder: 'Search…',
+    searchProjectAria: 'Search project',
+    searchIssueAria: 'Search issue',
+    optSelectProject: '— select a project —',
+    optSelectIssue: '— select an issue —',
+    optNoJiraCustom: '— no Jira: enter a custom key —',
+    optSelectProjectForIssues: '— select a project to load issues —',
+    optCustomIssue: '— other / custom —',
+    optLoadingIssues: 'Loading issues…',
+    optApiTokenAccount: '— API token account —',
+    projectFallbackPlaceholder: 'Project (e.g. ETP)',
+    customIssuePlaceholder: 'Custom key (e.g. ETP-123)',
+    summaryPlaceholder: 'Issue description',
+    durationPlaceholder: '1.5 or 1:30',
+    authorNote: 'The worklog in Jira will be saved under your API account',
+    authorApiAccount: 'API account',
+    btnCancel: 'Cancel',
+    btnSave: 'Save',
+    btnEdit: 'Edit',
+    btnDelete: 'Delete',
+    jiraDialogTitle: 'Jira settings',
+    jiraTokenHint: 'API token:',
+    jiraTokenPlaceholder: 'Leave blank to keep unchanged',
+    jiraTokenKeep: '•••••••• (leave blank = no change)',
+    jiraTokenPaste: 'Paste API token',
+    jiraConnected: 'Jira: connected',
+    jiraNoToken: 'Jira: no token',
+    colTask: 'Issue',
+    colTotal: 'Total',
+    footDailyTotal: 'Daily total / grand total',
+    todayTag: 'today',
+    dayTitle: 'Day {day}',
+    dayTodayTitle: 'Today — day {day}',
+    cellAddTitle: 'Click to add hours · {label} · day {day}',
+    taskFallback: 'issue',
+    filterActiveTitle: 'Filter: {key} — click to show all',
+    filterShowTitle: 'Show only issues for project {key}',
+    confirmDelete: 'Delete this entry?',
+    toastSavedJira: 'Saved and updated in Jira',
+    toastSaved: 'Changes saved',
+    toastAddedJiraMismatch: 'Added → Jira (as {jira}; locally: {local})',
+    toastAddedJira: 'Entry added and sent to Jira',
+    toastAdded: 'Entry added',
+    toastDeleted: 'Deleted',
+    toastJiraSaved: 'Jira settings saved',
+    toastJiraSavedNoToken: 'Saved (no token)',
+    toastSwitchedMonth: 'Switched to {month}',
+    toastIssuesError: 'Issues: {msg}',
+    toastAutoSyncError: 'Auto-sync: {msg}',
+  },
+  pl: {
+    docTitle: 'Jira Time Tracker — Worklogi z Jiry',
+    subtitle: 'Worklogi z Jiry',
+    month: 'Miesiąc',
+    jiraChipTitle: 'Status połączenia z Jirą',
+    btnConnectJira: 'Połącz z Jirą',
+    btnConnectJiraTitle: 'Ustawienia Jira',
+    btnExport: 'Eksport CSV',
+    btnExportTitle: 'Eksport CSV wybranego miesiąca',
+    statTotal: 'Suma godzin w miesiącu',
+    statCount: 'Liczba wpisów w miesiącu',
+    statProjects: 'Godziny wg projektu',
+    gridTitle: 'Siatka miesięczna',
+    gridHint: 'Wiersze = zadania · kolumny = dni · kliknij komórkę · auto-sync z Jirą',
+    gridHintFilter: ' · filtr: <strong>{key}</strong> (kliknij ponownie, by wyczyścić)',
+    gridHintToday: 'Dziś: {date}',
+    btnAdd: '+ Nowy wpis',
+    gridEmptyInitial: 'Brak danych — połącz z Jirą lub dodaj wpis.',
+    gridEmptyMonth: 'Brak danych miesiąca.',
+    gridEmptyFiltered: 'Brak zadań projektu {key} w tym miesiącu.',
+    gridEmptyEntries: 'Brak wpisów w tym miesiącu — połącz z Jirą lub dodaj ręcznie.',
+    entriesTitle: 'Lista wpisów',
+    entriesHint: 'Szczegóły i edycja pojedynczych worklogów',
+    entriesExpand: 'Rozwiń, aby zobaczyć wpisy',
+    thStart: 'Start',
+    thProject: 'Projekt',
+    thIssue: 'Zgłoszenie',
+    thTime: 'Czas',
+    thComment: 'Komentarz',
+    thActions: 'Akcje',
+    entriesEmpty: 'Brak wpisów — połącz z Jirą lub dodaj ręcznie.',
+    dialogNew: 'Nowy wpis',
+    dialogEdit: 'Edytuj wpis',
+    dialogAddHours: 'Dodaj godziny · {label} · dzień {day}',
+    labelProject: 'Projekt',
+    labelIssue: 'Zgłoszenie',
+    labelSummary: 'Podsumowanie',
+    labelStart: 'Start',
+    labelDuration: 'Czas (godziny lub hh:mm)',
+    labelComment: 'Komentarz',
+    labelAuthor: 'Autor',
+    searchPlaceholder: 'Szukaj…',
+    searchProjectAria: 'Szukaj projektu',
+    searchIssueAria: 'Szukaj zgłoszenia',
+    optSelectProject: '— wybierz projekt —',
+    optSelectIssue: '— wybierz zgłoszenie —',
+    optNoJiraCustom: '— brak Jiry: wpisz własny klucz —',
+    optSelectProjectForIssues: '— wybierz projekt, by załadować zadania —',
+    optCustomIssue: '— inne / własne —',
+    optLoadingIssues: 'Ładowanie zadań…',
+    optApiTokenAccount: '— konto z tokena API —',
+    projectFallbackPlaceholder: 'Projekt (np. ETP)',
+    customIssuePlaceholder: 'Własny klucz (np. ETP-123)',
+    summaryPlaceholder: 'Opis zadania',
+    durationPlaceholder: '1.5 lub 1:30',
+    authorNote: 'Worklog w Jirze zapisze się na Twoim koncie API',
+    authorApiAccount: 'Konto API',
+    btnCancel: 'Anuluj',
+    btnSave: 'Zapisz',
+    btnEdit: 'Edytuj',
+    btnDelete: 'Usuń',
+    jiraDialogTitle: 'Ustawienia Jira',
+    jiraTokenHint: 'Token API:',
+    jiraTokenPlaceholder: 'Pozostaw puste, by nie zmieniać',
+    jiraTokenKeep: '•••••••• (pozostaw puste = bez zmian)',
+    jiraTokenPaste: 'Wklej token API',
+    jiraConnected: 'Jira: połączona',
+    jiraNoToken: 'Jira: brak tokena',
+    colTask: 'Zadanie',
+    colTotal: 'Suma',
+    footDailyTotal: 'Suma dzienna / łącznie',
+    todayTag: 'dziś',
+    dayTitle: 'Dzień {day}',
+    dayTodayTitle: 'Dziś — dzień {day}',
+    cellAddTitle: 'Kliknij, aby dodać godziny · {label} · dzień {day}',
+    taskFallback: 'zadanie',
+    filterActiveTitle: 'Filtr: {key} — kliknij, by pokazać wszystkie',
+    filterShowTitle: 'Pokaż tylko zadania projektu {key}',
+    confirmDelete: 'Usunąć ten wpis?',
+    toastSavedJira: 'Zapisano i zaktualizowano w Jirze',
+    toastSaved: 'Zapisano zmiany',
+    toastAddedJiraMismatch: 'Dodano → Jira (na koncie {jira}; lokalnie: {local})',
+    toastAddedJira: 'Dodano wpis i wysłano do Jiry',
+    toastAdded: 'Dodano wpis',
+    toastDeleted: 'Usunięto',
+    toastJiraSaved: 'Zapisano ustawienia Jira',
+    toastJiraSavedNoToken: 'Zapisano (brak tokena)',
+    toastSwitchedMonth: 'Przełączono na {month}',
+    toastIssuesError: 'Zadania: {msg}',
+    toastAutoSyncError: 'Auto-sync: {msg}',
+  },
+};
+
+let currentLang = 'en';
+
+function loadLang() {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved === 'en' || saved === 'pl') return saved;
+  } catch (_) {}
+  return 'en';
+}
+
+function t(key, vars) {
+  const dict = I18N[currentLang] || I18N.en;
+  let s = dict[key] ?? I18N.en[key] ?? key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.replaceAll('{' + k + '}', String(v));
+    }
+  }
+  return s;
+}
+
+function applyStaticI18n() {
+  document.documentElement.lang = currentLang;
+  document.title = t('docTitle');
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.getAttribute('data-i18n');
+    if (key) el.textContent = t(key);
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-html');
+    if (key) el.innerHTML = t(key);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-title');
+    if (key) el.title = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (key) el.placeholder = t(key);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-aria');
+    if (key) el.setAttribute('aria-label', t(key));
+  });
+  document.querySelectorAll('.lang-btn').forEach((btn) => {
+    const lang = btn.getAttribute('data-lang');
+    btn.setAttribute('aria-pressed', lang === currentLang ? 'true' : 'false');
+  });
+}
+
+function setLang(lang) {
+  if (lang !== 'en' && lang !== 'pl') return;
+  currentLang = lang;
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch (_) {}
+  applyStaticI18n();
+  // Refresh chip label without side effects from updateJiraChip
+  const chip = $('#jiraChip');
+  if (chip) {
+    if (jiraConfigured) {
+      const name = (jiraMyself && jiraMyself.displayName) || '';
+      chip.textContent = name ? `Jira: ${name}` : t('jiraConnected');
+      chip.className = 'jira-chip ok';
+    } else {
+      chip.textContent = t('jiraNoToken');
+      chip.className = 'jira-chip warn';
+    }
+  }
+  const entryDlg = $('#entryDialog');
+  if (entryDlg && entryDlg.open) {
+    const titleEl = $('#dialogTitle');
+    const mode = titleEl && titleEl.dataset.mode;
+    if (mode === 'edit') titleEl.textContent = t('dialogEdit');
+    else if (mode === 'addHours') {
+      titleEl.textContent = t('dialogAddHours', {
+        label: titleEl.dataset.label || t('taskFallback'),
+        day: titleEl.dataset.day || '',
+      });
+    } else {
+      titleEl.textContent = t('dialogNew');
+    }
+  }
+  if (lastDashboard) {
+    renderProjectChips(lastDashboard);
+    renderDayGrid(lastDashboard);
+    const entries = projectFilter
+      ? (lastDashboard.entries || []).filter((e) => (e.project_key || '') === projectFilter)
+      : lastDashboard.entries;
+    renderEntries(entries || []);
+  }
+  const projSel = $('#fProject');
+  if (projSel && projSel.options.length && !projSel.options[0].value) {
+    projSel.options[0].textContent = t('optSelectProject');
+  }
+  const issSel = $('#fIssue');
+  if (issSel && issSel.options.length) {
+    const first = issSel.options[0];
+    if (first && !first.value) {
+      first.textContent = jiraConfigured ? t('optSelectIssue') : t('optNoJiraCustom');
+    }
+    const custom = [...issSel.options].find((o) => o.value === CUSTOM_ISSUE_VALUE);
+    if (custom) custom.textContent = t('optCustomIssue');
+  }
+}
+
+currentLang = loadLang();
+
 const monthInput = $('#monthInput');
 const entriesBody = $('#entriesBody');
 const entriesSection = $('#entriesSection');
@@ -95,13 +389,13 @@ function updateJiraChip(status) {
   }
   if (jiraConfigured) {
     const name = (jiraMyself && jiraMyself.displayName) || '';
-    chip.textContent = name ? `Jira: ${name}` : 'Jira: połączona';
+    chip.textContent = name ? `Jira: ${name}` : t('jiraConnected');
     chip.className = 'jira-chip ok';
   } else if (status && status.hasToken === false) {
-    chip.textContent = 'Jira: brak tokena';
+    chip.textContent = t('jiraNoToken');
     chip.className = 'jira-chip warn';
   } else {
-    chip.textContent = 'Jira: brak tokena';
+    chip.textContent = t('jiraNoToken');
     chip.className = 'jira-chip warn';
   }
   if (jiraConfigured && !was) {
@@ -178,7 +472,7 @@ function populateProjectSelect(projects) {
   const txt = $('#fProjectText');
   if (!sel) return;
   const current = sel.value;
-  sel.innerHTML = '<option value="">— wybierz projekt —</option>';
+  sel.innerHTML = `<option value="">${t('optSelectProject')}</option>`;
   for (const p of projects || []) {
     const opt = document.createElement('option');
     opt.value = p.key;
@@ -259,8 +553,8 @@ function populateIssueSelect(issues, { selectedKey = '', allowEmpty = true } = {
     opts.push(
       `<option value="">${
         jiraConfigured
-          ? '— wybierz zgłoszenie —'
-          : '— brak Jiry: wpisz własny klucz —'
+          ? t('optSelectIssue')
+          : t('optNoJiraCustom')
       }</option>`
     );
   }
@@ -283,7 +577,7 @@ function populateIssueSelect(issues, { selectedKey = '', allowEmpty = true } = {
   }
   const customSelected = selectedKey && ![...projectIssues.map((i) => i.key), ...lastIssueKeys].includes(selectedKey);
   opts.push(
-    `<option value="${CUSTOM_ISSUE_VALUE}"${customSelected ? ' selected' : ''}>— inne / własne —</option>`
+    `<option value="${CUSTOM_ISSUE_VALUE}"${customSelected ? ' selected' : ''}>${t('optCustomIssue')}</option>`
   );
   sel.innerHTML = opts.join('');
   if (customSelected && selectedKey) {
@@ -325,7 +619,7 @@ async function loadIssuesForProject(projectKey, { selectedKey = '' } = {}) {
   populateIssueSelect([], { selectedKey: '' });
   const sel = $('#fIssue');
   if (sel) {
-    sel.innerHTML = '<option value="">Ładowanie zadań…</option>';
+    sel.innerHTML = `<option value="">${t('optLoadingIssues')}</option>`;
   }
   try {
     const data = await api(
@@ -344,7 +638,7 @@ async function loadIssuesForProject(projectKey, { selectedKey = '' } = {}) {
   } catch (err) {
     if (token !== issuesLoadToken) return [];
     populateIssueSelect([], { selectedKey });
-    toast(`Zadania: ${err.message}`, 'error');
+    toast(t('toastIssuesError', { msg: err.message }), 'error');
     return [];
   }
 }
@@ -360,7 +654,7 @@ function getAuthorDisplayName() {
 function defaultAuthorName() {
   if (jiraMyself && jiraMyself.displayName) return jiraMyself.displayName;
   if (jiraMyself && jiraMyself.email) return jiraMyself.email;
-  return DEFAULT_AUTHOR || 'Konto API';
+  return DEFAULT_AUTHOR || t('authorApiAccount');
 }
 
 function updateAuthorNote() {
@@ -486,7 +780,7 @@ async function autoPullFromJira({ force = false } = {}) {
     }
     return data;
   } catch (err) {
-    toast(`Auto-sync: ${err.message}`, 'error');
+    toast(t('toastAutoSyncError', { msg: err.message }), 'error');
     return null;
   }
 }
@@ -506,7 +800,8 @@ function todayParts() {
 }
 
 function formatTodayLong(d) {
-  return new Intl.DateTimeFormat('pl-PL', {
+  const locale = currentLang === 'pl' ? 'pl-PL' : 'en-US';
+  return new Intl.DateTimeFormat(locale, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -572,18 +867,18 @@ function renderDayGrid(data) {
 
   if (hint) {
     const filterNote = projectFilter
-      ? ` · filtr: <strong>${escapeHtml(projectFilter)}</strong> (kliknij ponownie, by wyczyścić)`
+      ? t('gridHintFilter', { key: escapeHtml(projectFilter) })
       : '';
     if (todayDay != null) {
-      hint.innerHTML = `Wiersze = zadania · kolumny = dni · kliknij komórkę · auto-sync z Jirą${filterNote}<br><strong class="today-label">Dziś: ${formatTodayLong(today.date)}</strong>`;
+      hint.innerHTML = `${t('gridHint')}${filterNote}<br><strong class="today-label">${t('gridHintToday', { date: formatTodayLong(today.date) })}</strong>`;
     } else {
-      hint.innerHTML = `Wiersze = zadania · kolumny = dni · kliknij komórkę · auto-sync z Jirą${filterNote}`;
+      hint.innerHTML = `${t('gridHint')}${filterNote}`;
     }
   }
 
   if (!days.length) {
     head.innerHTML = '';
-    body.innerHTML = '<tr><td class="empty">Brak danych miesiąca.</td></tr>';
+    body.innerHTML = `<tr><td class="empty">${t('gridEmptyMonth')}</td></tr>`;
     foot.innerHTML = '';
     return;
   }
@@ -593,22 +888,22 @@ function renderDayGrid(data) {
       const isToday = todayDay != null && d === todayDay;
       const cls = isToday ? 'col-day today-col' : 'col-day';
       const label = isToday
-        ? `<span class="day-num">${d}</span><span class="day-today-tag">dziś</span>`
+        ? `<span class="day-num">${d}</span><span class="day-today-tag">${t('todayTag')}</span>`
         : String(d);
-      const title = isToday ? `Dziś — dzień ${d}` : `Dzień ${d}`;
+      const title = isToday ? t('dayTodayTitle', { day: d }) : t('dayTitle', { day: d });
       return `<th class="${cls}" data-day="${d}" title="${title}">${label}</th>`;
     })
     .join('');
   head.innerHTML = `<tr>
-    <th class="col-task">Zadanie</th>
+    <th class="col-task">${t('colTask')}</th>
     ${dayHeaders}
-    <th class="col-total">Suma</th>
+    <th class="col-total">${t('colTotal')}</th>
   </tr>`;
 
   if (!rows.length) {
     const emptyMsg = projectFilter
-      ? `Brak zadań projektu ${escapeHtml(projectFilter)} w tym miesiącu.`
-      : 'Brak wpisów w tym miesiącu — połącz z Jirą lub dodaj ręcznie.';
+      ? t('gridEmptyFiltered', { key: escapeHtml(projectFilter) })
+      : t('gridEmptyEntries');
     body.innerHTML = `<tr><td class="empty" colspan="${days.length + 2}">${emptyMsg}</td></tr>`;
     foot.innerHTML = '';
     return;
@@ -622,7 +917,7 @@ function renderDayGrid(data) {
           const isToday = todayDay != null && d === todayDay;
           let cls = h > 0 ? 'cell-hours has-time editable' : 'cell-hours zero editable';
           if (isToday) cls += ' today-col';
-          const title = `Kliknij, aby dodać godziny · ${r.issue_key || 'zadanie'} · dzień ${d}`;
+          const title = t('cellAddTitle', { label: r.issue_key || t('taskFallback'), day: d });
           return `<td class="${cls}" data-day="${d}" title="${escapeHtml(title)}">${escapeHtml(formatCellHours(h))}</td>`;
         })
         .join('');
@@ -672,7 +967,7 @@ function renderDayGrid(data) {
     })
     .join('');
   foot.innerHTML = `<tr>
-    <td class="col-task">Suma dzienna / łącznie</td>
+    <td class="col-task">${t('footDailyTotal')}</td>
     ${totCells}
     <td class="col-total">${escapeHtml(formatCellHours(grandTotal) || '0')}</td>
   </tr>`;
@@ -734,8 +1029,8 @@ function renderProjectChips(data) {
       const key = p.project_key || '';
       const active = projectFilter === key ? ' active' : '';
       const title = projectFilter === key
-        ? `Filtr: ${key} — kliknij, by pokazać wszystkie`
-        : `Pokaż tylko zadania projektu ${key}`;
+        ? t('filterActiveTitle', { key })
+        : t('filterShowTitle', { key });
       return `<button type="button" class="chip chip-filter${active}" data-project-key="${escapeHtml(key)}" title="${escapeHtml(title)}">${escapeHtml(key)}<strong>${p.hours.toFixed(2)} h</strong></button>`;
     })
     .join('');
@@ -791,7 +1086,7 @@ if (entriesSection) {
 function renderEntries(entries) {
   if (!entries.length) {
     entriesBody.innerHTML =
-      '<tr><td colspan="6" class="empty">Brak wpisów — połącz z Jirą lub dodaj ręcznie.</td></tr>';
+      `<tr><td colspan="6" class="empty">${t('entriesEmpty')}</td></tr>`;
     return;
   }
   entriesBody.innerHTML = entries
@@ -808,8 +1103,8 @@ function renderEntries(entries) {
       <td>${escapeHtml(e.comment || '')}</td>
       <td class="actions-cell">
         <div class="row-actions">
-          <button type="button" class="btn btn-ghost btn-sm" data-edit="${e.id}">Edytuj</button>
-          <button type="button" class="btn btn-danger btn-sm" data-del="${e.id}">Usuń</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-edit="${e.id}">${t('btnEdit')}</button>
+          <button type="button" class="btn btn-danger btn-sm" data-del="${e.id}">${t('btnDelete')}</button>
         </div>
       </td>
     </tr>`
@@ -818,7 +1113,8 @@ function renderEntries(entries) {
 }
 
 async function openCreate() {
-  $('#dialogTitle').textContent = 'Nowy wpis';
+  $('#dialogTitle').textContent = t('dialogNew');
+  $('#dialogTitle').dataset.mode = 'new';
   $('#entryId').value = '';
   clearEntrySelectFilters();
   setProjectValue('');
@@ -853,8 +1149,11 @@ async function openAddHoursFromCell({ issueKey, issueSummary, projectKey, day })
     hh = '09';
     mm = '00';
   }
-  const label = issueKey || 'zadanie';
-  $('#dialogTitle').textContent = `Dodaj godziny · ${label} · dzień ${day}`;
+  const label = issueKey || t('taskFallback');
+  $('#dialogTitle').textContent = t('dialogAddHours', { label, day });
+  $('#dialogTitle').dataset.mode = 'addHours';
+  $('#dialogTitle').dataset.label = label;
+  $('#dialogTitle').dataset.day = String(day);
   $('#entryId').value = '';
   clearEntrySelectFilters();
   setProjectValue(projectKey || '');
@@ -883,7 +1182,8 @@ async function openAddHoursFromCell({ issueKey, issueSummary, projectKey, day })
 
 async function openEdit(id) {
   const e = await api(`/api/entries/${id}`);
-  $('#dialogTitle').textContent = 'Edytuj wpis';
+  $('#dialogTitle').textContent = t('dialogEdit');
+  $('#dialogTitle').dataset.mode = 'edit';
   $('#entryId').value = String(e.id);
   clearEntrySelectFilters();
   setProjectValue(e.project_key || '');
@@ -925,7 +1225,7 @@ entryForm.addEventListener('submit', async (ev) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      toast(res.updatedInJira ? 'Zapisano i zaktualizowano w Jirze' : 'Zapisano zmiany');
+      toast(res.updatedInJira ? t('toastSavedJira') : t('toastSaved'));
     } else {
       const res = await api('/api/entries', {
         method: 'POST',
@@ -934,13 +1234,13 @@ entryForm.addEventListener('submit', async (ev) => {
       });
       if (res.pushedToJira && res.authorMismatch) {
         toast(
-          `Dodano → Jira (na koncie ${res.pushedAsAuthor || 'API'}; lokalnie: ${payload.author})`,
+          t('toastAddedJiraMismatch', { jira: res.pushedAsAuthor || 'API', local: payload.author }),
           'ok'
         );
       } else if (res.pushedToJira) {
-        toast('Dodano wpis i wysłano do Jiry');
+        toast(t('toastAddedJira'));
       } else {
-        toast('Dodano wpis');
+        toast(t('toastAdded'));
       }
     }
     dialog.close();
@@ -979,10 +1279,10 @@ entriesBody.addEventListener('click', async (ev) => {
     }
   }
   if (delId) {
-    if (!confirm('Usunąć ten wpis?')) return;
+    if (!confirm(t('confirmDelete'))) return;
     try {
       await api(`/api/entries/${delId}`, { method: 'DELETE' });
-      toast('Usunięto');
+      toast(t('toastDeleted'));
       await loadDashboard();
     } catch (err) {
       toast(err.message, 'error');
@@ -1035,8 +1335,8 @@ $('#btnJiraSettings').addEventListener('click', async () => {
     $('#jiraEmail').value = (status && status.email) || 'grzegorz.osowski@netinteractive.pl';
     $('#jiraToken').value = '';
     $('#jiraToken').placeholder = status && status.hasToken
-      ? '•••••••• (pozostaw puste = bez zmian)'
-      : 'Wklej token API';
+      ? t('jiraTokenKeep')
+      : t('jiraTokenPaste');
   } catch (_) {
     $('#jiraBaseUrl').value = 'https://niteam.atlassian.net';
     $('#jiraEmail').value = 'grzegorz.osowski@netinteractive.pl';
@@ -1068,7 +1368,7 @@ jiraForm.addEventListener('submit', async (ev) => {
       populateProjectSelect([]);
     }
     jiraDialog.close();
-    toast(status.configured ? 'Zapisano ustawienia Jira' : 'Zapisano (brak tokena)');
+    toast(status.configured ? t('toastJiraSaved') : t('toastJiraSavedNoToken'));
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -1111,6 +1411,15 @@ if (fAuthor) {
   fAuthor.addEventListener('change', updateAuthorNote);
 }
 
+// Language switcher
+document.querySelectorAll('.lang-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const lang = btn.getAttribute('data-lang');
+    if (lang) setLang(lang);
+  });
+});
+applyStaticI18n();
+
 // Init
 monthInput.value = currentMonth();
 (async function init() {
@@ -1141,7 +1450,7 @@ async function onBecomeVisible() {
   try {
     if (ensureLiveMonth()) {
       await loadDashboard();
-      toast(`Przełączono na ${monthInput.value}`);
+      toast(t('toastSwitchedMonth', { month: monthInput.value }));
     }
   } catch (err) {
     toast(err.message, 'error');

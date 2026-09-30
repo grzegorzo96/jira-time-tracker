@@ -1,8 +1,10 @@
 # Jira Time Tracker
 
-A local app for viewing and logging **Jira worklogs** in a monthly layout. Two-way sync with Jira, a tasks × days hours grid, entry CRUD, and CSV export.
+A local app for viewing and logging **Jira worklogs** in a monthly layout.
 
 Open **http://127.0.0.1:3847** after starting the server.
+
+The UI has an **EN | PL** language switcher (default **EN**); the choice is stored in the browser.
 
 ![Jira Time Tracker — monthly grid filtered to ADM](docs/screenshot.png)
 
@@ -37,7 +39,7 @@ Log file: `/tmp/time-tracker.log`
 
 ## Connect to Jira
 
-In the UI, click **Połącz z Jirą** and enter:
+In the UI, click **Connect to Jira** and enter:
 
 | Field | Example |
 |-------|---------|

@@ -780,3 +780,42 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .select-with-filter select option[hidden] {
   display: none;
 }
+
+/* --- Language switcher (EN | PL) --- */
+.lang-switch {
+  display: inline-flex;
+  align-items: stretch;
+  align-self: flex-end;
+  margin-bottom: 0.15rem;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  gap: 0;
+}
+
+.lang-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.32rem 0.65rem;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.lang-btn:hover {
+  color: var(--text);
+}
+
+.lang-btn[aria-pressed="true"] {
+  background: rgba(59, 130, 246, 0.28);
+  color: #bfdbfe;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.45);
+}
