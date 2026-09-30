@@ -4,6 +4,8 @@ A local app for viewing and logging **Jira worklogs** in a monthly layout. Two-w
 
 Open **http://127.0.0.1:3847** after starting the server.
 
+![Jira Time Tracker — monthly hours grid](docs/screenshot.png)
+
 ## Requirements
 
 - **Node.js ≥ 22.5** (uses built-in `node:sqlite`)
