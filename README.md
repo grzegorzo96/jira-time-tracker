@@ -1,85 +1,80 @@
 # Jira Time Tracker
 
-Lokalna aplikacja do przeglądania i zapisywania **worklogów Jira** w układzie miesięcznym. Dwukierunkowa synchronizacja z Jirą (pull + push), siatka zadań × dni, CRUD wpisów i eksport CSV. Bez stopera — godziny logujesz do konkretnych zgłoszeń.
+A local app for viewing and logging **Jira worklogs** in a monthly layout. Two-way sync with Jira, a tasks × days hours grid, entry CRUD, and CSV export.
 
-UI: **http://127.0.0.1:3847**
+Open **http://127.0.0.1:3847** after starting the server.
 
-## Wymagania
+## Requirements
 
-- **Node.js ≥ 22.5** (wbudowany `node:sqlite`)
-- Konto Jira Cloud + [API token](https://id.atlassian.com/manage-profile/security/api-tokens)
+- **Node.js ≥ 22.5** (uses built-in `node:sqlite`)
+- Jira Cloud account and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens)
 
-## Instalacja
+## Install
 
 ```bash
-cd /Users/grzegorzosowski/time-tracker   # lub katalog sklonowanego projektu
 npm install
 ```
 
-## Uruchomienie
+## Run
 
 ```bash
 npm start
 ```
 
-Serwer startuje na porcie **3847** (zmienna `PORT` nadpisuje). Otwórz w przeglądarce:
+The server listens on port **3847** (override with `PORT`). If a Jira token is already saved, the app pulls the current month’s worklogs on startup.
 
-**http://127.0.0.1:3847**
+### Optional: macOS LaunchAgent
 
-Przy każdym starcie aplikacja sama łączy się z Jirą (jeśli masz zapisany token) i pobiera worklogi bieżącego miesiąca.
-
-### Autostart na macOS (opcjonalnie)
-
-Możesz trzymać serwer jako LaunchAgent `pl.netinteractive.time-tracker` (KeepAlive). Po zmianie `server.js`:
+You can keep the server running as LaunchAgent `pl.netinteractive.time-tracker` (KeepAlive). After changing `server.js`:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/pl.netinteractive.time-tracker
 ```
 
-Log: `/tmp/time-tracker.log`
+Log file: `/tmp/time-tracker.log`
 
-## Połączenie z Jirą
+## Connect to Jira
 
-W UI kliknij **Połącz z Jirą** i podaj:
+In the UI, click **Połącz z Jirą** and enter:
 
-| Pole | Przykład |
-|------|----------|
-| Base URL | `https://niteam.atlassian.net` |
-| Email | adres konta Atlassian |
-| API token | token z id.atlassian.com |
+| Field | Example |
+|-------|---------|
+| Base URL | `https://your-site.atlassian.net` |
+| Email | Atlassian account email |
+| API token | token from id.atlassian.com |
 
-Zapisuje się lokalnie w `data/jira-config.json` (katalog `data/` jest w `.gitignore` — token nie trafia do gita).
+Config is stored in `data/jira-config.json` (gitignored).
 
-Po połączeniu:
+Once connected:
 
-- **Pull** — przy starcie / focusie okna (max co ~60 s) pobiera Twoje worklogi z Jiry
-- **Push** — każdy zapis i edycja godzin idzie do Jiry; usunięcie kasuje też worklog w Jirze
-- W formularzu wybierasz projekt, zgłoszenie i autora z list Jiry (domyślny autor = użytkownik tokena)
+- **Pull** — on load and when the window gains focus (throttled to about once per 60s)
+- **Push** — creates and updates go to Jira; deletes remove the remote worklog too
+- The entry form loads projects, issues, and authors from Jira (default author = the token user)
 
-Worklogi w Jirze zawsze powstają na koncie właściciela tokena API.
+Worklogs in Jira are always created as the API token account.
 
-## Co robi UI
+## Features
 
-- **Siatka miesięczna** — zadania × dni, godziny z „h”, podświetlenie dziś, klik w komórkę dodaje godziny
-- **Godziny wg projektu** — klik w chip filtruje siatkę i listę wpisów (ponowny klik czyści filtr)
-- **Lista wpisów** — zwijana, edycja / usuwanie
-- **Eksport CSV** — kolumny: `issue_key`, `issue_summary`, `project_key`, `started`, `time_spent`, `author`, `comment` (`started` jako `YYYY-MM-DD HH:MM:SS`)
-- Miesiąc w pickerze sam przełącza się na bieżący po zmianie miesiąca kalendarzowego (chyba że ręcznie wybrałeś inny)
+- Monthly tasks × days grid (hours with “h”, today highlighted, click a cell to add time)
+- Project chips filter the grid and entry list (click again to clear)
+- Collapsible entry list with edit and delete
+- CSV export columns: `issue_key`, `issue_summary`, `project_key`, `started`, `time_spent`, `author`, `comment` (`started` as `YYYY-MM-DD HH:MM:SS`)
+- Month picker follows the calendar month unless you pick another month manually
 
 ## Stack
 
 - Node.js + Express
-- SQLite (`node:sqlite`) → `data/tracker.db`
-- Frontend: zwykły HTML / CSS / JS w `public/`
+- SQLite via `node:sqlite` → `data/tracker.db`
+- Vanilla HTML / CSS / JS in `public/`
 
-## Pliki danych
+## Data files
 
-| Co | Ścieżka |
-|----|---------|
-| Baza SQLite | `data/tracker.db` |
-| Konfiguracja Jira (token) | `data/jira-config.json` |
+| What | Path |
+|------|------|
+| SQLite database | `data/tracker.db` |
+| Jira config (token) | `data/jira-config.json` |
 | UI | `public/` |
 
-## Licencja
+## License
 
-Użycie osobiste / wewnętrzne.
+Personal / internal use.
