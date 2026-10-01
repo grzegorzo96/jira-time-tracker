@@ -25,6 +25,8 @@ npm install
 npm start
 ```
 
+`npm start` runs `scripts/start.sh`, which does a `git pull --ff-only origin main` (continues locally if pull fails) and then starts the server.
+
 The server listens on port **3847** (override with `PORT`). If a Jira token is already saved, the app pulls the current month’s worklogs on startup.
 
 ### Optional: macOS LaunchAgent

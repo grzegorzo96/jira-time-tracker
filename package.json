@@ -4,8 +4,8 @@
   "description": "Jira Time Tracker — two-way worklog sync and monthly hours grid",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "bash scripts/start.sh",
+    "dev": "bash scripts/start.sh"
   },
   "engines": {
     "node": ">=22.5.0"
