@@ -5,8 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "verify-import": "node scripts/verify-import.js"
+    "dev": "node server.js"
   },
   "engines": {
     "node": ">=22.5.0"
